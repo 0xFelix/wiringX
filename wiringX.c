@@ -36,7 +36,7 @@ struct devices_t *device = NULL;
 static int setup = -2;
 
 void device_register(struct devices_t **dev, const char *name) {
-	*dev = malloc(sizeof(struct devices_t));
+	*dev = (devices_t*)malloc(sizeof(struct devices_t));
 	(*dev)->pinMode = NULL;
 	(*dev)->digitalWrite = NULL;
 	(*dev)->digitalRead = NULL;
@@ -50,7 +50,7 @@ void device_register(struct devices_t **dev, const char *name) {
 	(*dev)->I2CWriteReg8 = NULL;
 	(*dev)->I2CWriteReg16 = NULL;
 
-	if(!((*dev)->name = malloc(strlen(name)+1))) {
+	if(!((*dev)->name = (char*)malloc(strlen(name)+1))) {
 		fprintf(stderr, "wiringX: out of memory\n");
 		exit(0);
 	}
@@ -306,7 +306,7 @@ int wiringXSetup(void) {
 			wiringXGC();
 			return -1;
 		}
-		printf("running on a %s\n", device->name);
+		//printf("running on a %s\n", device->name);
 		setup = device->setup();
 		return setup;
 	} else {
