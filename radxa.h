@@ -15,13 +15,13 @@
 	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef _WIRING_X_RASPBERRYPI_H_
-#define _WIRING_X_RASPBERRYPI_H_
+#ifndef _WIRING_X_RADXA_H_
+#define _WIRING_X_RADXA_H_
 
 #include "wiringX.h"
 
-struct platform_t *raspberrypi;
+struct platform_t *radxa;
 
-void raspberrypiInit(void);
+void radxaInit(void);
 
 #endif

@@ -30,15 +30,17 @@
 #include <setjmp.h>
 
 #include "wiringX.h"
-#include "i2c-dev.h"
+#ifndef __FreeBSD__
+	#include "i2c-dev.h"
+#endif
 #include "hummingboard.h"
 
-#define FUNC_GPIO					0x5
+#define FUNC_GPIO								0x5
 #define MX6Q_IOMUXC_BASE_ADDR		0x02000000
-#define GPIO_MUX_REG				0x000e0224
-#define GPIO_MUX_CTRL				0x000e05f4
-#define NUM_PINS					8
-#define MAP_SIZE 					1024*1024
+#define GPIO_MUX_REG						0x000e0224
+#define GPIO_MUX_CTRL						0x000e05f4
+#define NUM_PINS								8
+#define MAP_SIZE 								1024*1024
 
 volatile void *gpio = NULL;
 
@@ -55,16 +57,23 @@ static int pinToGPIOAddr[NUM_PINS] = {
 	0x9c000 // GPIO 7 --> GPIO1_DR
 };
 
+int hummingboardValidGPIO(int pin) {
+	if(pin >= 0 && pin <= 7) {
+		return 0;
+	}
+	return -1;
+}
+
 static int changeOwner(char *file) {
 	uid_t uid = getuid();
 	uid_t gid = getgid();
 
 	if(chown(file, uid, gid) != 0) {
 		if(errno == ENOENT)	{
-			fprintf(stderr, "hummingboard->changeOwner: File not present: %s\n", file);
+			wiringXLog(LOG_ERR, "hummingboard->changeOwner: File not present: %s", file);
 			return -1;
 		} else {
-			fprintf(stderr, "hummingboard->changeOwner: Unable to change ownership of %s: %s\n", file, strerror (errno));
+			wiringXLog(LOG_ERR, "hummingboard->changeOwner: Unable to change ownership of %s: %s", file, strerror (errno));
 			return -1;
 		}
 	}
@@ -75,12 +84,12 @@ static int setup(void) {
 	int fd = 0;
 
 	if((fd = open("/dev/mem", O_RDWR | O_SYNC | O_CLOEXEC)) < 0) {
-		fprintf(stderr, "hummingboard->setup: Unable to open /dev/mem: %s\n", strerror(errno));
+		wiringXLog(LOG_ERR, "hummingboard->setup: Unable to open /dev/mem: %s", strerror(errno));
 		return -1;
 	}
 
 	if((int32_t)(gpio = mmap(0, MAP_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, MX6Q_IOMUXC_BASE_ADDR)) == -1) {
-		fprintf(stderr, "hummingboard->setup: mmap (GPIO) failed: %s\n", strerror (errno));
+		wiringXLog(LOG_ERR, "hummingboard->setup: mmap (GPIO) failed: %s", strerror (errno));
 		close(fd);
 		return -1;
 	}
@@ -90,9 +99,15 @@ static int setup(void) {
 
 static int hummingboardPinMode(int pin, int direction) {
 	if(!gpio) {
-		fprintf(stderr, "hummingboard->pinMode: Please run wiringXSetup before running pinMode\n");
-		exit(0);
+		wiringXLog(LOG_ERR, "hummingboard->pinMode: Please run wiringXSetup before running pinMode");
+		return -1;
 	}
+
+	if(hummingboardValidGPIO(pin) != 0) {
+		wiringXLog(LOG_ERR, "hummingboard->pinMode: Invalid pin number %d (0 >= pin <= 7)", pin);
+		return -1;
+	}
+
 	*((unsigned long *)(gpio + GPIO_MUX_REG + pinToMuxAddr[pin] )) = FUNC_GPIO;
 	*((unsigned long *)(gpio + GPIO_MUX_CTRL + pinToMuxAddr[pin] )) = 0xF;
 
@@ -101,7 +116,7 @@ static int hummingboardPinMode(int pin, int direction) {
 	} else if(direction == OUTPUT) {
 		*((unsigned long *)(gpio + pinToGPIOAddr[pin] + 4)) = *((unsigned long *)(gpio + pinToGPIOAddr[pin] + 4)) | (1 << pinToBin[pin]);
 	} else {
-		fprintf(stderr, "hummingboard->pinMode: Pin modes can only be OUTPUT or INPUT\n");
+		wiringXLog(LOG_ERR, "hummingboard->pinMode: Pin modes can only be OUTPUT or INPUT");
 		return -1;
 	}
 	pinModes[pin] = direction;
@@ -112,8 +127,12 @@ static int identify(void) {
 	FILE *cpuFd;
 	char line[120], revision[120], hardware[120], name[120];
 
+	memset(revision, '\0', 120);
+	memset(hardware, '\0', 120);
+	
 	if((cpuFd = fopen("/proc/cpuinfo", "r")) == NULL) {
-		fprintf(stderr, "hummingboard->identify: Unable open /proc/cpuinfo\n");
+		wiringXLog(LOG_ERR, "hummingboard->identify: Unable open /proc/cpuinfo");
+		return -1;
 	}
 
 	while(fgets(line, 120, cpuFd) != NULL) {
@@ -125,7 +144,12 @@ static int identify(void) {
 		}
 	}
 
-	fclose(cpuFd) ;
+	fclose(cpuFd);
+
+	if(strlen(hardware) == 0 || strlen(revision) == 0) {
+		wiringXLog(LOG_ERR, "hummingboard->identify: /proc/cpuinfo has no hardware and revision line");
+		return -1;
+	}
 
 	sscanf(hardware, "Hardware%*[ \t]:%*[ ]%[a-zA-Z0-9 ./()]%*[\n]", name);
 	if(strstr(name, "Freescale i.MX6") != NULL
@@ -139,7 +163,12 @@ static int identify(void) {
 
 static int hummingboardDigitalWrite(int pin, int value) {
 	if(pinModes[pin] != OUTPUT) {
-		fprintf(stderr, "hummingboard->digitalWrite: Trying to write to pin %d, but it's not configured as output\n", pin);
+		wiringXLog(LOG_ERR, "hummingboard->digitalWrite: Trying to write to pin %d, but it's not configured as output", pin);
+		return -1;
+	}
+
+	if(hummingboardValidGPIO(pin) != 0) {
+		wiringXLog(LOG_ERR, "hummingboard->digitalWrite: Invalid pin number %d (0 >= pin <= 7)", pin);
 		return -1;
 	}
 
@@ -153,8 +182,13 @@ static int hummingboardDigitalWrite(int pin, int value) {
 }
 
 static int hummingboardDigitalRead(int pin) {
-	if(pinModes[pin] != INPUT) {
-		fprintf(stderr, "hummingboard->digitalRead: Trying to write to pin %d, but it's not configured as input\n", pin);
+	if(pinModes[pin] != INPUT && pinModes[pin] != SYS) {
+		wiringXLog(LOG_ERR, "hummingboard->digitalRead: Trying to write to pin %d, but it's not configured as input", pin);
+		return -1;
+	}
+
+	if(hummingboardValidGPIO(pin) != 0) {
+		wiringXLog(LOG_ERR, "hummingboard->digitalRead: Invalid pin number %d (0 >= pin <= 7)", pin);
 		return -1;
 	}
 
@@ -168,8 +202,14 @@ static int hummingboardDigitalRead(int pin) {
 static int hummingboardISR(int pin, int mode) {
 	int i = 0, fd = 0, match = 0, count = 0;
 	const char *sMode = NULL;
-	char path[35], c;
+	char path[35], c, line[120];
 	pinModes[pin] = SYS;
+	FILE *f = NULL;
+
+	if(hummingboardValidGPIO(pin) != 0) {
+		wiringXLog(LOG_ERR, "hummingboard->isr: Invalid pin number %d (0 >= pin <= 7)", pin);
+		return -1;
+	}
 
 	if(mode == INT_EDGE_FALLING) {
 		sMode = "falling" ;
@@ -178,27 +218,16 @@ static int hummingboardISR(int pin, int mode) {
 	} else if(mode == INT_EDGE_BOTH) {
 		sMode = "both";
 	} else {
-		fprintf(stderr, "hummingboard->isr: Invalid mode. Should be INT_EDGE_BOTH, INT_EDGE_RISING, or INT_EDGE_FALLING\n");
+		wiringXLog(LOG_ERR, "hummingboard->isr: Invalid mode. Should be INT_EDGE_BOTH, INT_EDGE_RISING, or INT_EDGE_FALLING");
 		return -1;
 	}
 
-	FILE *f = NULL;
-	for(i=0;i<NUM_PINS;i++) {
-		if(pin == i) {
-			sprintf(path, "/sys/class/gpio/gpio%d/value", pinsToGPIO[i]);
-			fd = open(path, O_RDWR);
-			match = 1;
-		}
-	}
-
-	if(!match) {
-		fprintf(stderr, "hummingboard->isr: Invalid GPIO: %d\n", pin);
-		return -1;
-	}
+	sprintf(path, "/sys/class/gpio/gpio%d/value", pinsToGPIO[pin]);
+	fd = open(path, O_RDWR);
 
 	if(fd < 0) {
 		if((f = fopen("/sys/class/gpio/export", "w")) == NULL) {
-			fprintf(stderr, "hummingboard->isr: Unable to open GPIO export interface: %s\n", strerror(errno));
+			wiringXLog(LOG_ERR, "hummingboard->isr: Unable to open GPIO export interface: %s", strerror(errno));
 			return -1;
 		}
 
@@ -207,17 +236,26 @@ static int hummingboardISR(int pin, int mode) {
 	}
 
 	sprintf(path, "/sys/class/gpio/gpio%d/direction", pinsToGPIO[pin]);
-	if((f = fopen(path, "w")) == NULL) {
-		fprintf(stderr, "hummingboard->isr: Unable to open GPIO direction interface for pin %d: %s\n", pin, strerror(errno));
+	if((f = fopen(path, "r")) == NULL) {
+		wiringXLog(LOG_ERR, "hummingboard->isr: Unable to open GPIO direction interface for pin %d: %s", pin, strerror(errno));
 		return -1;
+	} else {
+		fgets(line, 120, f);
+		fclose(f);
 	}
 
-	fprintf(f, "in");
-	fclose(f);
+	if(strstr(line, "in") == NULL) {
+		if((f = fopen(path, "w")) == NULL) {
+			wiringXLog(LOG_ERR, "hummingboard->isr: Unable to open GPIO direction interface for pin %d: %s", pin, strerror(errno));
+			return -1;
+		}
+		fprintf(f, "in");
+		fclose(f);
+	}
 
 	sprintf(path, "/sys/class/gpio/gpio%d/edge", pinsToGPIO[pin]);
 	if((f = fopen(path, "w")) == NULL) {
-		fprintf(stderr, "hummingboard->isr: Unable to open GPIO edge interface for pin %d: %s\n", pin, strerror(errno));
+		wiringXLog(LOG_ERR, "hummingboard->isr: Unable to open GPIO edge interface for pin %d: %s", pin, strerror(errno));
 		return -1;
 	}
 
@@ -230,21 +268,39 @@ static int hummingboardISR(int pin, int mode) {
 	} else if(strcasecmp (sMode, "both") == 0) {
 		fprintf(f, "both\n");
 	} else {
-		fprintf(stderr, "hummingboard->isr: Invalid mode: %s. Should be rising, falling or both\n", sMode);
+		wiringXLog(LOG_ERR, "hummingboard->isr: Invalid mode: %s. Should be rising, falling or both", sMode);
+		return -1;
+	}
+	fclose(f);
+
+	if((f = fopen(path, "r")) == NULL) {
+		wiringXLog(LOG_ERR, "hummingboard->isr: Unable to open GPIO edge interface for pin %d: %s", pin, strerror(errno));
+		return -1;
+	}
+
+	match = 0;
+	while(fgets(line, 120, f) != NULL) {
+		if(strstr(line, sMode) != NULL) {
+			match = 1;
+			break;
+		}
+	}
+	fclose(f);
+
+	if(match == 0) {
+		wiringXLog(LOG_ERR, "hummingboard->isr: Failed to set interrupt edge to %s", sMode);
 		return -1;
 	}
 
 	sprintf(path, "/sys/class/gpio/gpio%d/value", pinsToGPIO[pin]);
 	if((sysFds[pin] = open(path, O_RDONLY)) < 0) {
-		fprintf(stderr, "hummingboard->isr: Unable to open GPIO value interface: %s\n", strerror(errno));
+		wiringXLog(LOG_ERR, "hummingboard->isr: Unable to open GPIO value interface: %s", strerror(errno));
 		return -1;
 	}
 	changeOwner(path);
 
 	sprintf(path, "/sys/class/gpio/gpio%d/edge", pinsToGPIO[pin]);
 	changeOwner(path);
-
-	fclose(f);
 
 	ioctl(fd, FIONREAD, &count);
 	for(i=0; i<count; ++i) {
@@ -261,7 +317,7 @@ static int hummingboardWaitForInterrupt(int pin, int ms) {
 	struct pollfd polls;
 
 	if(pinModes[pin] != SYS) {
-		fprintf(stderr, "hummingboard->waitForInterrupt: Trying to read from pin %d, but it's not configured as interrupt\n", pin);
+		wiringXLog(LOG_ERR, "hummingboard->waitForInterrupt: Trying to read from pin %d, but it's not configured as interrupt", pin);
 		return -1;
 	}
 
@@ -269,6 +325,11 @@ static int hummingboardWaitForInterrupt(int pin, int ms) {
 	polls.events = POLLPRI;
 
 	x = poll(&polls, 1, ms);
+
+	/* Don't react to signals */
+	if(x == -1 && errno == EINTR) {
+		x = 0;
+	}
 
 	(void)read(sysFds[pin], &c, 1);
 	lseek(sysFds[pin], 0, SEEK_SET);
@@ -288,7 +349,7 @@ static int hummingboardGC(void) {
 			sprintf(path, "/sys/class/gpio/gpio%d/value", pinsToGPIO[i]);
 			if((fd = open(path, O_RDWR)) > 0) {
 				if((f = fopen("/sys/class/gpio/unexport", "w")) == NULL) {
-					fprintf(stderr, "hummingboard->gc: Unable to open GPIO unexport interface: %s\n", strerror(errno));
+					wiringXLog(LOG_ERR, "hummingboard->gc: Unable to open GPIO unexport interface: %s", strerror(errno));
 				}
 
 				fprintf(f, "%d\n", pinsToGPIO[i]);
@@ -307,6 +368,7 @@ static int hummingboardGC(void) {
 	return 0;
 }
 
+#ifndef __FreeBSD__
 static int hummingboardI2CRead(int fd) {
 	return i2c_smbus_read_byte(fd);
 }
@@ -335,26 +397,27 @@ static int hummingboardI2CSetup(int devId) {
 	int fd = 0;
 	const char *device = NULL;
 
-	device = "/dev/i2c-0";
+	device = "/dev/i2c-2";
 
 	if((fd = open(device, O_RDWR)) < 0) {
-		fprintf(stderr, "hummingboard->I2CSetup: Unable to open %s: %s\n", device, strerror(errno));
+		wiringXLog(LOG_ERR, "hummingboard->I2CSetup: Unable to open %s: %s", device, strerror(errno));
 		return -1;
 	}
 
 	if(ioctl(fd, I2C_SLAVE, devId) < 0) {
-		fprintf(stderr, "hummingboard->I2CSetup: Unable to set %s to slave mode: %s\n", device, strerror(errno));
+		wiringXLog(LOG_ERR, "hummingboard->I2CSetup: Unable to set %s to slave mode: %s", device, strerror(errno));
 		return -1;
 	}
 
 	return fd;
 }
+#endif
 
 void hummingboardInit(void) {
 
 	memset(pinModes, -1, NUM_PINS);
 
-	device_register(&hummingboard, "hummingboard");
+	platform_register(&hummingboard, "hummingboard");
 	hummingboard->setup=&setup;
 	hummingboard->pinMode=&hummingboardPinMode;
 	hummingboard->digitalWrite=&hummingboardDigitalWrite;
@@ -362,6 +425,7 @@ void hummingboardInit(void) {
 	hummingboard->identify=&identify;
 	hummingboard->isr=&hummingboardISR;
 	hummingboard->waitForInterrupt=&hummingboardWaitForInterrupt;
+#ifndef __FreeBSD__
 	hummingboard->I2CRead=&hummingboardI2CRead;
 	hummingboard->I2CReadReg8=&hummingboardI2CReadReg8;
 	hummingboard->I2CReadReg16=&hummingboardI2CReadReg16;
@@ -369,5 +433,7 @@ void hummingboardInit(void) {
 	hummingboard->I2CWriteReg8=&hummingboardI2CWriteReg8;
 	hummingboard->I2CWriteReg16=&hummingboardI2CWriteReg16;
 	hummingboard->I2CSetup=&hummingboardI2CSetup;
+#endif
 	hummingboard->gc=&hummingboardGC;
+	hummingboard->validGPIO=&hummingboardValidGPIO;
 }
