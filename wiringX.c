@@ -377,7 +377,7 @@ int wiringXSetup(void) {
 		} else {
 			wiringXLog(LOG_DEBUG, "running on a %s", platform->name);
 		}
-		setup = device->setup();
+		setup = platform->setup();
 		return setup;
 	} else {
 		return setup;
