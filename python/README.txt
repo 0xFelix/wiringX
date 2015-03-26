@@ -2,6 +2,8 @@ This package export all wiringX function to python.
 
 Run "python setup.py install" to install.
 
+On Arch Linux ARM, install "python-wiringx-git" or "python2-wiringx-git" via Pacman
+
 To import:
    from wiringX import gpio
 
@@ -20,3 +22,6 @@ Function list:
 - gpio.I2CWrite(fd, data)
 - gpio.I2CWriteReg8(fd, address, data)
 - gpio.I2CWriteReg16(fd, address, data)
+- gpio.SPISetup(channel, speed_in_hz)
+- gpio.SPIDataRW(channel, data, length)
+- gpio.SPIGetFd(channel)

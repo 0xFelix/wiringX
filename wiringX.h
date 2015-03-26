@@ -18,12 +18,24 @@
 #ifndef _WIRING_X_H_
 #define _WIRING_X_H_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <errno.h>
 #include <syslog.h>
 
 #ifndef	TRUE
 #define	TRUE	(1==1)
 #define	FALSE	(1==2)
+#endif
+
+#if !defined(PATH_MAX)
+    #if defined(_POSIX_PATH_MAX)
+        #define PATH_MAX _POSIX_PATH_MAX
+    #else
+        #define PATH_MAX 1024
+    #endif
 #endif
 
 #define HIGH		1
@@ -64,6 +76,9 @@ typedef struct platform_t {
 	int (*I2CWriteReg8)(int fd, int reg, int data);
 	int (*I2CWriteReg16)(int fd, int reg, int data);
 	int (*I2CSetup)(int devId);
+	int (*SPIGetFd)(int channel);
+	int (*SPIDataRW)(int channel, unsigned char *data, int len);
+	int (*SPISetup)(int channel, int speed);
 	int (*validGPIO)(int gpio);
 	int (*gc)(void);
 	struct platform_t *next;
@@ -87,7 +102,14 @@ int wiringXI2CWrite(int fd, int data);
 int wiringXI2CWriteReg8(int fd, int reg, int data);
 int wiringXI2CWriteReg16(int fd, int reg, int data);
 int wiringXI2CSetup(int devId);
+int wiringXSPIGetFd(int channel);
+int wiringXSPIDataRW(int channel, unsigned char *data, int len);
+int wiringXSPISetup(int channel, int speed);
 char *wiringXPlatform(void);
 int wiringXValidGPIO(int gpio);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
