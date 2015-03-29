@@ -58,7 +58,7 @@ extern "C" {
 #define	PWM_MODE_MS			0
 #define	PWM_MODE_BAL		1
 
-void (*wiringXLog)(int prio, const char *format_str, ...);
+extern void (*wiringXLog)(int prio, const char *format_str, ...);
 
 typedef struct platform_t {
 	char *name;
@@ -84,7 +84,7 @@ typedef struct platform_t {
 	struct platform_t *next;
 } platform_t;
 
-struct platform_t *platforms;
+extern struct platform_t *platforms;
 
 void platform_register(struct platform_t **platform, const char *name);
 void delayMicroseconds(unsigned int howLong);
