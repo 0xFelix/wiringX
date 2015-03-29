@@ -434,7 +434,7 @@ int wiringXSetup(void) {
 			wiringXGC();
 			return -1;
 		} else {
-			wiringXLog(LOG_DEBUG, "running on a %s", platform->name);
+			//wiringXLog(LOG_DEBUG, "running on a %s", platform->name);
 		}
 		setup = platform->setup();
 		return setup;
