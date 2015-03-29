@@ -1,3 +1,13 @@
 *.pyc
 python/__pycache__/
 python/build/
+CMakeCache.txt
+CMakeFiles/
+CPackConfig.cmake
+CPackSourceConfig.cmake
+Makefile
+cmake_install.cmake
+cmake_uninstall.cmake
+cmake_uninstall.cmake.in
+libwiringX.a
+libwiringX.so
