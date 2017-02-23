@@ -271,7 +271,7 @@ static int piBoardRev(void) {
 
 	sscanf(hardware, "Hardware%*[ \t]:%*[ ]%[a-zA-Z0-9 ./()]%*[\n]", name);
 
-	if(strstr(name, "BCM2708") != NULL) {
+	if(strstr(name, "BCM2708") != NULL || strstr(name, "BCM2835") != NULL) {
 		if(boardRev != -1) {
 			return boardRev;
 		}
@@ -322,7 +322,7 @@ static int piBoardRev(void) {
 			boardRev = 2;
 		}
 		return boardRev;
-	} else if(strstr(name, "BCM2709") != NULL) {
+	} else if(strstr(name, "BCM2709") != NULL || strstr(name, "BCM2836") != NULL) {
 		piModel2 = 1;
 		boardRev = 2;
 		return boardRev;
